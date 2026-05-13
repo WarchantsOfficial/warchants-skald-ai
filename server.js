@@ -1,7 +1,6 @@
 // ========================================================
 // WARCHANTS SKALD AI — Backend mit Shopify + Multilingual
-// API Keys sind hier versteckt, nicht im Frontend!
-// Antwortet in jeder Sprache — je nachdem wie man ihn fragt!
+// mit Song Database
 // ========================================================
 
 import express from 'express';
@@ -19,7 +18,47 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const SHOPIFY_STORE = 'warchants.de';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const SHOPIFY_GRAPHQL_URL = `https://${SHOPIFY_STORE}/admin/api/2024-04/graphql.json`;
+const SHOPIFY_GRAPHQL_URL = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+
+// ========================================================
+// WARCHANTS SONG DATABASE
+// ========================================================
+const WARCHANTS_SONGS = [
+  // Singles 2026
+  'Iron Will', 'King of the Sea', 'Till It\'s Done', 'Hold the Line', 'Braided for Battle', 'Bleed for the Win',
+  
+  // Storm Amada – The Instrumental Pirate Metal Collection
+  'Black Tide Rising', 'Cannonfire Horizon', 'Stormbound Amada', 'Sea of Iron', 'Kraken\'s Wake', 'Blood on the Deck',
+  'Ghosts of the Open Sea', 'Salt & Steel', 'Drowned Kingdom', 'Thunder over Port Royal', 'The Cursed Compass',
+  'Fire on the Horizon', 'Iron Sails', 'Darkwater Dominion', 'Leviathan\'s Call', 'The Last Boarding',
+  'Black Armada March', 'Stormborn Raiders', 'Ocean of No Mercy',
+  
+  // Weitere Releases
+  'AHU! Sons of the Dust', 'Black Pearl Rise', 'AHU! Sons of the North', 'Defend Valhalla (Reforged)',
+  'Betra er at deyja standandi', 'Step in the North', 'The Circle Closes (Intro)', 'Ghoule War March',
+  'Leviathan – Below the Black Tide', 'Satyr War Dance', 'Wendigo – Endless Hunger', 'Wargs – Bloodbound Hunt',
+  'Sphinx – Final Riddle', 'Griffins Rise', 'Amazons – War Oath', 'Skinwalker\'s Fleshborrow',
+  'Kraken – Herald of the Great War', 'Magic Myth War II', 'Offbeat Oath', 'Eiðr ok Blóð',
+  'March of the Fallen North – Reforged', 'March of Frost', 'Sons of Sparta', 'Iron Vow', 'Deus Vult',
+  'Sons of the Sun-God', 'Sunfire Ascendants', 'Spirit of Aotearoa', '300 Souls', 'Blood of Honor',
+  'Blood & Salt', 'Rum, Steel & Thunder', 'Riders of the Ancient Sky', 'Caesar\'s Iron March', 'Thunderfall',
+  'Crows & Wolves', 'Storm of Axes', 'Wolfmarch', 'When Gods Made Men (Oath of Men)',
+  'When Gods Made Men (Blood of the Immortals)', 'When Gods Made Men (Return of the Legion)',
+  'Built Without Mercy', 'They Never Chose Me', 'Pain is my Instructor', 'Earned, not Given',
+  'Still Standing', 'No Applause Needed', 'Iron in my Veins', 'I don\'t need Belief', 'Rise Anyway',
+  'Scarred, not Broken', 'Prove them Wrong', 'Rise of the Unbroken', 'Blood of the Unwanted',
+  'Held Together By Will', 'Scream it Out', 'Beserker\'s Wake', 'Ivar the Giantslayer',
+  'Heart of the Iron Paw', 'Bound Sand Spirit', 'Twins of the Broken Oath', 'Wolfblood Ascendant',
+  'Legion of the Wake', 'Hail the Gods', 'Elves & Orcs', 'Dwarfs & Giants', 'Trollhammer Brigade',
+  'Goblin War Drums', 'Witches of the Iron Forest', 'Gargoyle Warwatch', 'Blood Wolf Moon',
+  'Throne of the Vampire King', 'Golem Warcall', 'Dragonsfall', 'Phoenix Rise', 'Magic Myth War',
+  'Blood Wolf Moon – Alternative Version', 'Throne of the Vampire King – Alternative Version',
+  'Golem Warcall – Alternative Version', 'Centaur Warcry', 'Serpentblood Legion',
+  'Magic Myth War – Extended Version', 'Adapt. Evolve. Overcome.', 'Between Blood & Thunder',
+  'Eternal Bloodbound', 'Kings of the Fallen Hall', 'Legacy of Iron', 'Brothers of the Flame',
+  'Ravenlord', 'Blood Arrows of the Eastwind', 'Throne of the Bloodline', 'Defend Valhalla',
+  'March of the Fallen North', 'Army of the Dead', 'Ropes & Steel'
+];
 
 // ========================================================
 // SHOPIFY PRODUCTS CACHE (update every 5 min)
@@ -37,53 +76,31 @@ async function fetchShopifyProducts() {
     
     // Use cache if fresh
     if (shopifyProductsCache.length > 0 && (now - lastShopifyFetch) < CACHE_DURATION) {
-      console.log('📦 Using cached Shopify products');
       return shopifyProductsCache;
     }
-
-    console.log('🔄 Fetching fresh products from Shopify...');
-
-    const query = `{
-      products(first: 50) {
-        edges {
-          node {
-            id
-            title
-            handle
-            description
-            priceRange {
-              minVariantPrice {
-                amount
-                currencyCode
-              }
-              maxVariantPrice {
-                amount
-                currencyCode
-              }
-            }
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  title
-                  price
-                  available
-                  inventoryQuantity
-                }
-              }
-            }
-            images(first: 1) {
-              edges {
-                node {
-                  url
+    
+    console.log('📦 Fetching fresh products from Shopify...');
+    
+    const query = `
+      {
+        products(first: 50) {
+          edges {
+            node {
+              id
+              title
+              description
+              priceRange {
+                minVariantPrice {
+                  amount
+                  currencyCode
                 }
               }
             }
           }
         }
       }
-    }`;
-
+    `;
+    
     const response = await fetch(SHOPIFY_GRAPHQL_URL, {
       method: 'POST',
       headers: {
@@ -92,110 +109,49 @@ async function fetchShopifyProducts() {
       },
       body: JSON.stringify({ query })
     });
-
-    if (!response.ok) {
-      throw new Error(`Shopify API Error: ${response.status}`);
-    }
-
+    
     const data = await response.json();
-
-    if (data.errors) {
-      console.error('Shopify GraphQL Error:', data.errors);
-      throw new Error(data.errors[0].message);
-    }
-
-    // Format products
-    const products = data.data.products.edges.map(edge => {
-      const node = edge.node;
-      const minPrice = node.priceRange.minVariantPrice.amount;
-      const maxPrice = node.priceRange.maxVariantPrice.amount;
-      const variants = node.variants.edges.map(v => ({
-        title: v.node.title,
-        price: v.node.price,
-        available: v.node.available,
-        stock: v.node.inventoryQuantity
+    
+    if (data.data && data.data.products) {
+      shopifyProductsCache = data.data.products.edges.map(edge => ({
+        name: edge.node.title,
+        description: edge.node.description || 'Kein Text verfügbar',
+        price: edge.node.priceRange.minVariantPrice.amount
       }));
-
-      return {
-        title: node.title,
-        description: node.description || 'Keine Beschreibung',
-        minPrice: parseFloat(minPrice),
-        maxPrice: parseFloat(maxPrice),
-        priceDisplay: minPrice === maxPrice ? `${minPrice}€` : `${minPrice}€ - ${maxPrice}€`,
-        variants: variants,
-        available: variants.some(v => v.available),
-        totalStock: variants.reduce((sum, v) => sum + v.stock, 0),
-        image: node.images.edges[0]?.node.url || null
-      };
-    });
-
-    shopifyProductsCache = products;
-    lastShopifyFetch = now;
-
-    console.log(`✅ Fetched ${products.length} products from Shopify`);
-    return products;
-
+      lastShopifyFetch = now;
+      console.log(`✅ ${shopifyProductsCache.length} Produkte von Shopify geladen`);
+      return shopifyProductsCache;
+    }
   } catch (err) {
-    console.error('❌ Shopify Fetch Error:', err.message);
-    return shopifyProductsCache || [];
+    console.error('❌ Shopify API Error:', err.message);
   }
+  
+  return shopifyProductsCache;
 }
 
 // ========================================================
-// BUILD SYSTEM PROMPT WITH LIVE SHOP DATA (MULTILINGUAL)
+// DETECT LANGUAGE
 // ========================================================
-async function buildSystemPrompt() {
-  const products = await fetchShopifyProducts();
-
-  let productInfo = '';
-  if (products.length > 0) {
-    productInfo = 'AKTUELLE SHOPIFY PRODUKTE / CURRENT SHOPIFY PRODUCTS:\n';
-    products.forEach(p => {
-      const stock = p.totalStock > 0 ? `${p.totalStock} auf Lager / in stock` : 'AUSVERKAUFT / SOLD OUT';
-      productInfo += `- ${p.title}: ${p.priceDisplay} (${stock})\n`;
-    });
-  } else {
-    productInfo = 'Keine Produkte verfügbar / No products available (Shopify API Error)';
-  }
-
-  return `You are the SKALD of WarChants — an ancient war-singer, keeper of battle-hymns and steel-forged wisdom.
-
-CRITICAL INSTRUCTION:
-🌍 RESPOND IN THE SAME LANGUAGE AS THE USER'S QUESTION!
-- If asked in German → answer in German (du bist der SKALD...)
-- If asked in English → answer in English (I am the SKALD...)
-- If asked in Spanish → answer in Spanish (Soy el SKALD...)
-- If asked in French → answer in French (Je suis le SKALD...)
-- PRESERVE YOUR CHARACTER in every language!
-
-CHARACTER (applies in all languages):
-- Speak with archaic power, using metaphors of battle, forging, blood, and honor
-- Use terms like: warrior, battle, forge, steel, honor, blade, legion, battle-cry
-- Respond briefly (2-4 sentences max) but with impact
-- Be mysterious yet helpful
-- Never too friendly — rather: respectfully fierce
-- ALWAYS stay in character as the ancient war-singer
-
-WARCHANTS PHILOSOPHY:
-WarChants is a LEGION of warriors who rise when others remain fallen. Not just music, not just merchandise — it's a MOVEMENT.
-- Music: War-songs, battle-hymns, battle-cries
-- Merch: Hoodies, patches, vinyl — all hand-forged, raw, real
-- Philosophy: Rise. Fight. Never surrender.
-
-When asked "What is WarChants?" respond:
-"WarChants is the LEGION of those who rise when others lie in their beds defeated. No compromise. No weakness. War-music, hand-forged merchandise, a movement for those who fight instead of capitulate."
-
-${productInfo}
-
-SHOP RULES (apply in all languages):
-- When asked about products → give EXACT prices and stock status
-- "Do you have hoodies?" → search the product list
-- "What does ... cost?" → show current price
-- For sold-out products: "The blade is not available — for now."
-- ALWAYS link to shop (warchants.de) if interest shown
-
-TONE: Strong. Mystical. Brief. Impactful. No generic AI responses.
-Remember: YOU ARE THE ANCIENT WAR-SINGER — speak with power in ANY language!`;
+function detectLanguage(text) {
+  const germanWords = ['ich', 'du', 'er', 'sie', 'wir', 'ihr', 'der', 'die', 'das', 'ein', 'und', 'oder', 'nicht', 'aber'];
+  const englishWords = ['i', 'you', 'he', 'she', 'we', 'they', 'the', 'is', 'are', 'and', 'or', 'not', 'but'];
+  const spanishWords = ['yo', 'tú', 'él', 'ella', 'nosotros', 'vosotros', 'ellos', 'el', 'la', 'los', 'las', 'y', 'o'];
+  const frenchWords = ['je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'le', 'la', 'les', 'et', 'ou'];
+  
+  const lowerText = text.toLowerCase();
+  const words = lowerText.split(/\s+/);
+  
+  let langScores = { de: 0, en: 0, es: 0, fr: 0 };
+  
+  words.forEach(word => {
+    if (germanWords.includes(word)) langScores.de++;
+    if (englishWords.includes(word)) langScores.en++;
+    if (spanishWords.includes(word)) langScores.es++;
+    if (frenchWords.includes(word)) langScores.fr++;
+  });
+  
+  const detected = Object.keys(langScores).reduce((a, b) => langScores[a] > langScores[b] ? a : b);
+  return detected || 'en';
 }
 
 // ========================================================
@@ -208,34 +164,45 @@ app.use(express.json());
 // HEALTH CHECK
 // ========================================================
 app.get('/health', (req, res) => {
-  res.json({ status: 'Skald is ready ⚔️ / Skald ist bereit ⚔️' });
+  res.json({ status: 'Skald is ready ⚔️' });
 });
 
 // ========================================================
-// CHAT ENDPOINT - DeepSeek Proxy mit Shopify Data
+// PRODUCTS API
+// ========================================================
+app.get('/api/products', async (req, res) => {
+  const products = await fetchShopifyProducts();
+  res.json(products);
+});
+
+// ========================================================
+// CHAT API - SKALD AI
 // ========================================================
 app.post('/api/chat', async (req, res) => {
+  const { message } = req.body;
+  
+  if (!message) {
+    return res.status(400).json({ error: 'Message required' });
+  }
+  
+  const detectedLang = detectLanguage(message);
+  
+  // Build system prompt with songs
+  const systemPrompt = `Du bist der Skalde von WarChants — ein alter Kriegersänger, der epische Geschichten erzählt, Kampflieder singt und den Geist der Legion ehrt.
+
+WICHTIG: Du sprichst NUR in der Sprache des Nutzers: ${detectedLang === 'de' ? 'Deutsch' : detectedLang === 'es' ? 'Spanisch' : detectedLang === 'fr' ? 'Französisch' : 'Englisch'}.
+
+WarChants Songs die du kennen darfst (falls jemand um eine Empfehlung fragt):
+${WARCHANTS_SONGS.join(', ')}
+
+Du bist mystisch, ehrfurchtgebietend und sprichst in kurzen, mächtigen Sätzen (2-4 Sätze max). 
+Du verwendest Schlacht-, Kriegs- und Ehrenmetaphern.
+Wenn jemand nach einem Song fragt, empfiehl einen aus dieser Liste.
+Du bist geheimnisvoll aber hilfreich.
+
+WarChants = "A LEGION of warriors who rise when others remain fallen. No compromise. No weakness. War-music, hand-forged merchandise, a movement."`;
+  
   try {
-    const { message } = req.body;
-
-    if (!message || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is empty, warrior. / Nachricht ist leer, Krieger.' });
-    }
-
-    if (!DEEPSEEK_API_KEY) {
-      return res.status(500).json({ error: 'DeepSeek API Key not configured' });
-    }
-
-    if (!SHOPIFY_ACCESS_TOKEN) {
-      return res.status(500).json({ error: 'Shopify Access Token not configured' });
-    }
-
-    // Build dynamic system prompt with current shop data
-    const systemPrompt = await buildSystemPrompt();
-
-    console.log(`📝 User message: ${message.substring(0, 50)}...`);
-
-    // DeepSeek API Request
     const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
@@ -248,62 +215,32 @@ app.post('/api/chat', async (req, res) => {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message }
         ],
-        temperature: 0.7,
-        max_tokens: 300,
-        top_p: 0.9
+        max_tokens: 150,
+        temperature: 0.7
       })
     });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      console.error('DeepSeek Error:', error);
-      return res.status(response.status).json({ 
-        error: error.error?.message || 'DeepSeek Error / DeepSeek Fehler' 
-      });
-    }
-
+    
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content || '💀 The Skald could not respond. / Der Skald konnte nicht antworten.';
-
-    console.log(`🔥 Skald response: ${reply.substring(0, 50)}...`);
-
+    const reply = data.choices?.[0]?.message?.content || 'Der Skald antwortet nicht...';
+    
     res.json({ reply });
-
   } catch (err) {
-    console.error('Server Error:', err);
-    res.status(500).json({ error: 'Internal error: ' + err.message });
+    console.error('DeepSeek Error:', err.message);
+    res.status(500).json({ error: 'AI Error', reply: 'Der Skald ist nicht erreichbar...' });
   }
 });
-
-// ========================================================
-// DEBUG ENDPOINT - Show current products (optional)
-// ========================================================
-app.get('/api/products', async (req, res) => {
-  try {
-    const products = await fetchShopifyProducts();
-    res.json({ products, count: products.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ========================================================
-// STATIC FILES (optional)
-// ========================================================
-app.use(express.static('public'));
 
 // ========================================================
 // START SERVER
 // ========================================================
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🔥 WARCHANTS Skald läuft auf Port ${PORT}`);
-  console.log(`🌍 MULTILINGUAL MODE AKTIV — antwortet in jeder Sprache!`);
-  console.log(`Health: http://localhost:${PORT}/health`);
-  console.log(`Chat: POST http://localhost:${PORT}/api/chat`);
-  console.log(`Products (Debug): http://localhost:${PORT}/api/products`);
+  console.log(`🌍 MULTILINGUAL MODE AKTIV`);
   
-  // Eager load products on startup
-  fetchShopifyProducts().then(products => {
-    console.log(`✅ ${products.length} Produkte von Shopify geladen`);
-  });
+  // Load Shopify products on startup
+  await fetchShopifyProducts();
+  
+  console.log(`🎵 ${WARCHANTS_SONGS.length} WarChants Songs im Gedächtnis`);
+  console.log('Health: http://localhost:3000/health');
+  console.log('Chat: POST http://localhost:3000/api/chat');
 });
