@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Salefinder",
+    "slug": "salefinder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "salefinder",
+    "splash": { "backgroundColor": "#0d0d0f" },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.salefinder.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Salefinder zeigt dir Deals in deiner Nähe.",
+        "NSLocationAlwaysUsageDescription": "Salefinder zeigt dir Deals in deiner Nähe."
+      }
+    },
+    "android": {
+      "adaptiveIcon": { "backgroundColor": "#0d0d0f" },
+      "package": "com.salefinder.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": { "bundler": "metro", "output": "static" },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Salefinder zeigt dir Deals in deiner Nähe."
+        }
+      ]
+    ],
+    "experiments": { "typedRoutes": true }
+  }
+}
